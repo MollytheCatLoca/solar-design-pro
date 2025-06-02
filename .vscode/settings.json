@@ -1,4 +1,16 @@
 {
-    "python.defaultInterpreterPath": "./backend/backend/venv/bin/python",
-    "python.terminal.activateEnvironment": true
+  "typescript.tsdk": "./node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": false,
+  "typescript.preferences.includePackageJsonAutoImports": "on",
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "typescript.validate.enable": false,
+  "javascript.validate.enable": false,
+  "typescript.disableAutomaticTypeAcquisition": true,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+  "typescript.tsserver.maxTsServerMemory": 4096,
+  "typescript.preferences.importModuleSpecifier": "relative"
 }
