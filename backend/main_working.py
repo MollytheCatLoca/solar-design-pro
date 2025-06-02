@@ -1,14 +1,12 @@
-# backend/main.py
-from contextlib import asynccontextmanager
+# backend/main_working.py
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from typing import List
 import logging
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.core.config import settings
 from app.core import security
 from app import crud, schemas, models
@@ -17,23 +15,11 @@ from app import crud, schemas, models
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Lifespan context manager
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("Starting up SolarDesignPro API...")
-    logger.info(f"Database URL: {settings.DATABASE_URL[:30]}...")
-    logger.info("API ready!")
-    yield
-    # Shutdown
-    logger.info("Shutting down...")
-
 # Crear instancia de FastAPI
 app = FastAPI(
     title="SolarDesignPro API",
     description="Backend API para SolarDesignPro",
     version="0.1.0",
-    lifespan=lifespan
 )
 
 # Configurar CORS
@@ -113,14 +99,13 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> models.User:
-    from jose import jwt
     credentials_exception = HTTPException(
         status_code=401,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(
+        payload = security.jwt.decode(
             token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         username: str = payload.get("sub")
@@ -140,7 +125,7 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 # Projects endpoints
-@app.get("/projects", response_model=List[schemas.Project])
+@app.get("/projects", response_model=list[schemas.Project])
 async def list_projects(
     skip: int = 0,
     limit: int = 100,
@@ -163,8 +148,15 @@ async def create_project(
     )
     return project
 
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting up SolarDesignPro API...")
+    logger.info(f"Database URL: {settings.DATABASE_URL[:30]}...")
+    logger.info("API ready!")
+
 if __name__ == "__main__":
     import uvicorn
     print(f"Starting server at http://localhost:8001")
     print(f"Documentation at http://localhost:8001/docs")
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)
