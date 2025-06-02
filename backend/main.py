@@ -1,17 +1,11 @@
 # backend/main.py
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from datetime import timedelta
-from typing import List
 import logging
 
-from app.database import SessionLocal
 from app.core.config import settings
-from app.core import security
-from app import crud, schemas, models
+from app.api.v1.api import api_router  # IMPORTANTE: Importar el router
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -45,16 +39,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dependencia para obtener DB
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# IMPORTANTE: Incluir el router principal con todas las rutas
+app.include_router(api_router, prefix="/api/v1")
 
 # Root endpoint
 @app.get("/")
@@ -70,98 +56,6 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "database": "connected"}
-
-# Login endpoint
-@app.post("/token", response_model=schemas.Token)
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    user = crud.user.authenticate(
-        db, email=form_data.username, password=form_data.password
-    )
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-# Register endpoint
-@app.post("/register", response_model=schemas.User)
-async def register(
-    user_in: schemas.UserCreate,
-    db: Session = Depends(get_db)
-):
-    user = crud.user.get_by_email(db, email=user_in.email)
-    if user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
-    user = crud.user.create(db, obj_in=user_in)
-    return user
-
-# Get current user
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> models.User:
-    from jose import jwt
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(
-            token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM]
-        )
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except Exception:
-        raise credentials_exception
-    
-    user = crud.user.get_by_email(db, email=username)
-    if user is None:
-        raise credentials_exception
-    return user
-
-# Me endpoint
-@app.get("/users/me", response_model=schemas.User)
-async def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
-
-# Projects endpoints
-@app.get("/projects", response_model=List[schemas.Project])
-async def list_projects(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    projects = crud.project.get_multi_by_owner(
-        db=db, owner_id=current_user.id, skip=skip, limit=limit
-    )
-    return projects
-
-@app.post("/projects", response_model=schemas.Project)
-async def create_project(
-    project_in: schemas.ProjectCreate,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    project = crud.project.create_with_owner(
-        db=db, obj_in=project_in, owner_id=current_user.id
-    )
-    return project
 
 if __name__ == "__main__":
     import uvicorn
