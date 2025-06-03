@@ -1,17 +1,11 @@
 // src/app/(dashboard)/projects/[id]/designs/new/page.tsx
-
 'use client';
 
-const React = require('react');
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import Link from 'next/link';
-import { toast } from 'sonner';
+import { Save, ChevronLeft } from 'lucide-react';
 import DesignMap from '@/components/design/DesignMap';
 import ModuleConfigurator from '@/components/design/ModuleConfigurator';
 import DesignMetrics from '@/components/design/DesignMetrics';
@@ -19,119 +13,116 @@ import DesignMetrics from '@/components/design/DesignMetrics';
 export default function NewDesignPage() {
     const params = useParams();
     const router = useRouter();
-    const projectId = Number(params.id);
+    const projectId = params.id as string;
 
-    const [designName, setDesignName] = React.useState('Diseño 1');
-    const [polygons, setPolygons] = React.useState<any[]>([]);
-    const [selectedModule, setSelectedModule] = React.useState(null);
-    const [designConfig, setDesignConfig] = React.useState({
-        tiltAngle: 25,
-        azimuthAngle: 180,
-        rowSpacing: 5,
-        moduleOrientation: 'landscape',
-        setback: 10,
+    // Estados principales
+    const [designName, setDesignName] = useState('Design 1');
+    const [polygons, setPolygons] = useState<any[]>([]);
+    const [selectedModule, setSelectedModule] = useState<any>(null);
+    const [selectedSegment, setSelectedSegment] = useState<any>(null);
+    const [designConfig, setDesignConfig] = useState({
+        // Configuración del módulo
+        maxSize: 1600, // kWp
+        racking: 'Fixed Tilt Racking',
+        surfaceHeight: 10,
+        azimuth: 180,
+        tilt: 25,
+
+        // Configuración del layout
+        frameSize: 4,
+        frameWidth: 1,
+        orientation: 'Landscape',
+        rowSpacing: 15,
+        moduleSpacing: 0.041,
+        frameSpacing: 0,
+        setback: 40,
+        alignH: 'center',
+        alignV: 'middle',
     });
 
-    const handleSave = () => {
-        // TODO: Implementar guardado en el backend
-        toast.success('Diseño guardado');
-        router.push(`/projects/${projectId}`);
+    const handleSaveDesign = async () => {
+        // TODO: Implementar guardado
+        console.log('Saving design:', {
+            name: designName,
+            projectId,
+            polygons,
+            module: selectedModule,
+            config: designConfig,
+        });
     };
 
-    const handleSimulate = () => {
-        // TODO: Implementar simulación
-        toast.info('Simulación iniciada...');
+    const handleSegmentSelect = (segment: any) => {
+        setSelectedSegment(segment);
     };
-
-    const totalCapacity = polygons.reduce((sum, polygon) => sum + (polygon.capacity || 0), 0);
-    const totalArea = polygons.reduce((sum, polygon) => sum + (polygon.area || 0), 0);
-    const estimatedPanels = Math.floor(totalArea / 2.5); // Estimación simple
 
     return (
-        <div className= "h-[calc(100vh-4rem)] flex flex-col" >
+        <div className= "h-screen flex flex-col" >
         {/* Header */ }
-        < div className = "flex items-center justify-between p-4 border-b" >
-            <div className="flex items-center gap-4" >
-                <Link href={ `/projects/${projectId}` }>
-                    <Button variant="ghost" size = "icon" >
-                        <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                            </Link>
-                            < div className = "flex items-center gap-2" >
-                                <Input
-              value={ designName }
-    onChange = {(e) => setDesignName(e.target.value)
+        < div className = "border-b bg-white" >
+            <div className="flex items-center justify-between p-4" >
+                <div className="flex items-center gap-4" >
+                    <Button
+              variant="ghost"
+    size = "sm"
+    onClick = {() => router.push(`/projects/${projectId}`)
 }
-className = "w-48"
+            >
+    <ChevronLeft className="h-4 w-4 mr-1" />
+        Volver al proyecto
+            </Button>
+            < Input
+value = { designName }
+onChange = {(e) => setDesignName(e.target.value)}
+className = "w-64"
+placeholder = "Nombre del diseño"
     />
-    <span className="text-sm text-muted-foreground" >
-        Proyecto #{ projectId }
-</span>
-    </div>
     </div>
     < div className = "flex items-center gap-2" >
-        <Button variant="outline" onClick = { handleSave } >
-            <Save className="mr-2 h-4 w-4" />
-                Guardar
-                </Button>
-                < Button onClick = { handleSimulate } >
-                    <Play className="mr-2 h-4 w-4" />
-                        Simular
-                        </Button>
-                        </div>
-                        </div>
+        <Button variant="outline" size = "sm" >
+            Cancelar
+            </Button>
+            < Button onClick = { handleSaveDesign } size = "sm" >
+                <Save className="h-4 w-4 mr-2" />
+                    Guardar
+                    </Button>
+                    </div>
+                    </div>
+                    </div>
 
-{/* Main Content */ }
-<div className="flex-1 flex" >
-    {/* Map Area */ }
-    < div className = "flex-1 relative" >
+{/* Main content */ }
+<div className="flex-1 grid grid-cols-12 gap-4 p-4 bg-gray-50" >
+    {/* Mapa - 8 columnas */ }
+    < div className = "col-span-8" >
         <DesignMap
-            projectId={ projectId }
-polygons = { polygons }
-onPolygonsChange = { setPolygons }
+            polygons={ polygons }
+setPolygons = { setPolygons }
+selectedModule = { selectedModule }
+config = { designConfig }
+onSegmentSelect = { handleSegmentSelect }
     />
     </div>
 
-{/* Side Panel */ }
-<div className="w-96 border-l bg-background overflow-y-auto" >
-    <Tabs defaultValue="design" className = "h-full" >
-        <TabsList className="w-full rounded-none" >
-            <TabsTrigger value="design" className = "flex-1" > Diseño </TabsTrigger>
-                < TabsTrigger value = "electrical" className = "flex-1" > Eléctrico </TabsTrigger>
-                    < TabsTrigger value = "metrics" className = "flex-1" > Métricas </TabsTrigger>
-                        </TabsList>
-
-                        < TabsContent value = "design" className = "p-4 space-y-4" >
-                            <ModuleConfigurator
-                selectedModule={ selectedModule }
-onModuleChange = { setSelectedModule }
+{/* Panel derecho - 4 columnas */ }
+<div className="col-span-4 space-y-4" >
+    {/* Configurador de módulos */ }
+    < div className = "h-[400px]" >
+        <ModuleConfigurator
+              selectedModule={ selectedModule }
+setSelectedModule = { setSelectedModule }
 config = { designConfig }
-onConfigChange = { setDesignConfig }
+setConfig = { setDesignConfig }
+selectedSegment = { selectedSegment }
     />
-    </TabsContent>
+    </div>
 
-    < TabsContent value = "electrical" className = "p-4" >
-        <Card>
-        <CardHeader>
-        <CardTitle>Configuración Eléctrica </CardTitle>
-            </CardHeader>
-            < CardContent >
-            <p className="text-sm text-muted-foreground" >
-                Próximamente: Configuración de strings e inversores
-                    </p>
-                    </CardContent>
-                    </Card>
-                    </TabsContent>
-
-                    < TabsContent value = "metrics" className = "p-4" >
-                        <DesignMetrics
-                totalCapacity={ totalCapacity }
-totalArea = { totalArea }
-estimatedPanels = { estimatedPanels }
-polygonCount = { polygons.length }
+{/* Métricas */ }
+<div className="flex-1" >
+    <DesignMetrics
+              polygons={ polygons }
+selectedModule = { selectedModule }
+config = { designConfig }
     />
-    </TabsContent>
-    </Tabs>
+    </div>
     </div>
     </div>
     </div>
