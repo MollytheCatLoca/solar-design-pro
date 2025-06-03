@@ -242,11 +242,11 @@ onValueChange = {(value) => setConfig({ ...config, racking: value })}
                     < div className = "flex gap-2" >
                         <Input
                   type="number"
-value = { config.surfaceHeight || 10 }
+value = { config.surfaceHeight || 0 }
 onChange = {(e) => setConfig({ ...config, surfaceHeight: e.target.value })}
 className = "w-20"
     />
-    <span className="flex items-center text-sm text-gray-600" > ft </span>
+    <span className="flex items-center text-sm text-gray-600" > m </span>
         </div>
         </div>
 
@@ -305,7 +305,7 @@ step = { 1}
                         < div className = "flex gap-2" >
                             <Input
                   type="number"
-value = { config.maxSize || 1600 }
+value = { config.maxSize || 10000 }
 onChange = {(e) => setConfig({ ...config, maxSize: e.target.value })}
 className = "w-24"
     />
@@ -369,16 +369,16 @@ onValueChange = {(value) => setConfig({ ...config, orientation: value })}
     <span className="text-sm w-24" > Row Spacing: </span>
         < Input
 type = "number"
-value = { config.rowSpacing || 15 }
+value = { config.rowSpacing || 2 }
 onChange = {(e) => setConfig({ ...config, rowSpacing: e.target.value })}
 className = "w-16"
     />
-    <span className="text-sm" > ft </span>
+    <span className="text-sm" > m </span>
         < span className = "text-sm text-gray-600 ml-2" >
             Span / rise: {
-                ((parseFloat(config.rowSpacing) || 15) /
-                    (selectedModule?.height || 1) /
-                    Math.sin((config.tilt || 25) * Math.PI / 180)).toFixed(1)
+    ((parseFloat(config.rowSpacing) || 15) /
+        (selectedModule?.height || 1) /
+        Math.sin((config.tilt || 25) * Math.PI / 180)).toFixed(1)
 }
 </span>
     </div>
@@ -393,7 +393,7 @@ onChange = {(e) => setConfig({ ...config, moduleSpacing: e.target.value })}
 className = "w-20"
 step = "0.001"
     />
-    <span className="text-sm" > ft </span>
+    <span className="text-sm" > m </span>
         < span className = "text-sm text-gray-600 ml-2" >
             GCR: { calculateGCR() }
 </span>
@@ -408,7 +408,7 @@ value = { config.frameSpacing || 0 }
 onChange = {(e) => setConfig({ ...config, frameSpacing: e.target.value })}
 className = "w-16"
     />
-    <span className="text-sm" > ft </span>
+    <span className="text-sm" > m </span>
         < Button variant = "link" size = "sm" className = "ml-auto text-blue-600" >
             Time of Day
                 </Button>
@@ -419,11 +419,11 @@ className = "w-16"
     <span className="text-sm w-24" > Setback: </span>
         < Input
 type = "number"
-value = { config.setback || 40 }
+value = { config.setback || 10 }
 onChange = {(e) => setConfig({ ...config, setback: e.target.value })}
 className = "w-16"
     />
-    <span className="text-sm" > ft </span>
+    <span className="text-sm" > m </span>
         </div>
 
 {/* Alineación */ }

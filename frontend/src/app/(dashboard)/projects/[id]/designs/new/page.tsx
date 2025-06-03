@@ -20,6 +20,7 @@ export default function NewDesignPage() {
     const [polygons, setPolygons] = useState<any[]>([]);
     const [selectedModule, setSelectedModule] = useState<any>(null);
     const [selectedSegment, setSelectedSegment] = useState<any>(null);
+    const [panelLayouts, setPanelLayouts] = useState<Map<number, any>>(new Map());
     const [designConfig, setDesignConfig] = useState({
         // Configuración del módulo
         maxSize: 1600, // kWp
@@ -29,13 +30,13 @@ export default function NewDesignPage() {
         tilt: 25,
 
         // Configuración del layout
-        frameSize: 4,
-        frameWidth: 1,
+        frameSize: 2,
+        frameWidth: 10,
         orientation: 'Landscape',
-        rowSpacing: 15,
+        rowSpacing: 2,
         moduleSpacing: 0.041,
         frameSpacing: 0,
-        setback: 40,
+        setback: 10,
         alignH: 'center',
         alignV: 'middle',
     });
@@ -94,11 +95,13 @@ placeholder = "Nombre del diseño"
     {/* Mapa - 8 columnas */ }
     < div className = "col-span-8" >
         <DesignMap
-            polygons={ polygons }
+                    polygons={ polygons }
 setPolygons = { setPolygons }
 selectedModule = { selectedModule }
 config = { designConfig }
 onSegmentSelect = { handleSegmentSelect }
+panelLayouts = { panelLayouts }
+setPanelLayouts = { setPanelLayouts }
     />
     </div>
 
@@ -118,9 +121,10 @@ selectedSegment = { selectedSegment }
 {/* Métricas */ }
 <div className="flex-1" >
     <DesignMetrics
-              polygons={ polygons }
+                    polygons={ polygons }
 selectedModule = { selectedModule }
 config = { designConfig }
+panelLayouts = { panelLayouts }
     />
     </div>
     </div>

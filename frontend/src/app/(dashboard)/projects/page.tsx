@@ -29,6 +29,7 @@ export default function ProjectsPage() {
     const [projectToDelete, setProjectToDelete] = React.useState<Project | null>(null);
     const [searchTerm, setSearchTerm] = React.useState('');
 
+
     const {
         projects,
         isLoading,

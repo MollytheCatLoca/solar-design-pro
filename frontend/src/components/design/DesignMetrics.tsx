@@ -7,12 +7,38 @@ interface DesignMetricsProps {
     polygons: any[];
     selectedModule: any;
     config: any;
+    panelLayouts?: Map<number, any>;
 }
 
-export default function DesignMetrics({ polygons, selectedModule, config }: DesignMetricsProps) {
+export default function DesignMetrics({ polygons, selectedModule, config, panelLayouts }: DesignMetricsProps) {
     // Calcular métricas totales
     const totalArea = polygons.reduce((sum, p) => sum + p.area, 0) / 10000; // hectáreas
     const totalSegments = polygons.length;
+
+    // Si tenemos panelLayouts, usar esos datos
+    const getTotalPanelsFromLayouts = () => {
+        if (!panelLayouts) return 0;
+        let total = 0;
+        panelLayouts.forEach(layout => {
+            total += layout.totalPanels || 0;
+        });
+        return total;
+    };
+
+    const getTotalCapacityFromLayouts = () => {
+        if (!panelLayouts || !selectedModule) return 0;
+        let total = 0;
+        panelLayouts.forEach(layout => {
+            total += layout.actualCapacityKW || 0;
+        });
+        return total;
+    };
+
+    // Usar datos de layouts si están disponibles, sino calcular estimación
+    const totalPanels = panelLayouts ? getTotalPanelsFromLayouts() :
+        (selectedModule ? Math.floor((calculateTotalCapacity() * 1000) / selectedModule.power) : 0);
+
+    const totalCapacity = panelLayouts ? getTotalCapacityFromLayouts() : calculateTotalCapacity();
 
     // Calcular capacidad total basada en configuración
     const calculateTotalCapacity = () => {
@@ -44,8 +70,7 @@ export default function DesignMetrics({ polygons, selectedModule, config }: Desi
         return panelLength * Math.cos(tiltRad) / rowPitch;
     };
 
-    const totalCapacity = calculateTotalCapacity();
-    const totalPanels = selectedModule ? Math.floor((totalCapacity * 1000) / selectedModule.power) : 0;
+
 
     // Estimaciones de producción (simplificadas)
     const annualProduction = totalCapacity * 1600; // kWh/kWp típico para Buenos Aires
