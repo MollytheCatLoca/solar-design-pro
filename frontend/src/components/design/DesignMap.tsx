@@ -49,20 +49,55 @@ export default function DesignMap({
         }
     }, [panelLayouts]);
     const [renderedPanels, setRenderedPanels] = useState<Map<number, any[]>>(new Map());
+    const renderedPanelsRef = useRef<Map<number, any[]>>(new Map());
+    // Referencias para acceder a los valores actuales en los closures
+    const selectedModuleRef = useRef(selectedModule);
+    const configRef = useRef(config);
+
+    // Actualizar las referencias cuando cambien los valores
+    useEffect(() => {
+        selectedModuleRef.current = selectedModule;
+    }, [selectedModule]);
+
+    useEffect(() => {
+        configRef.current = config;
+    }, [config]);
+
     // Función helper para limpiar paneles de un polígono
     // Función helper para limpiar paneles de un polígono
     const clearPanelsForPolygonId = (polygonId: number) => {
-        setRenderedPanels(prevRendered => {
-            const panels = prevRendered.get(polygonId);
-            if (panels && panels.length > 0) {
-                console.log(`Limpiando ${panels.length} paneles del polígono ${polygonId}`);
-                panels.forEach(panel => {
-                    if (panel && panel.setMap) {
+        console.log(`clearPanelsForPolygonId llamada para polígono ${polygonId}`);
+
+        // Limpiar del ref primero
+        const panels = renderedPanelsRef.current.get(polygonId);
+        console.log(`Paneles en ref para ${polygonId}:`, panels?.length || 0);
+
+        if (panels && panels.length > 0) {
+            console.log(`Limpiando ${panels.length} paneles del polígono ${polygonId}`);
+            let limpiados = 0;
+            panels.forEach((panel, index) => {
+                if (panel && panel.setMap) {
+                    try {
                         panel.setMap(null);
+                        limpiados++;
+                    } catch (e) {
+                        console.error(`Error limpiando panel ${index}:`, e);
                     }
-                });
-            }
-            return prevRendered;
+                } else {
+                    console.warn(`Panel ${index} no válido:`, panel);
+                }
+            });
+            console.log(`Paneles efectivamente limpiados: ${limpiados}`);
+        }
+
+        // Actualizar ref
+        renderedPanelsRef.current.delete(polygonId);
+
+        // Actualizar estado
+        setRenderedPanels(prev => {
+            const newRendered = new Map(prev);
+            newRendered.delete(polygonId);
+            return newRendered;
         });
     };
     const [renderedGuides, setRenderedGuides] = useState<Map<number, any[]>>(new Map());
@@ -99,6 +134,8 @@ export default function DesignMap({
             renderedPanels.forEach((panels, polygonId) => {
                 panels.forEach(panel => panel.setMap(null));
             });
+            // También limpiar del ref
+            renderedPanelsRef.current.clear();
 
             const newLayouts = new Map();
             const newRenderedPanels = new Map();
@@ -153,6 +190,8 @@ export default function DesignMap({
                         });
 
                         newRenderedPanels.set(polygon.id, panels);
+                        renderedPanelsRef.current.set(polygon.id, panels);
+
                         console.log(`Rendered ${panels.length} panels for polygon ${polygon.id}`);
                     }
                 }
@@ -387,6 +426,7 @@ export default function DesignMap({
             panelLayouts.set(newPolygon.id, layout);
             if (layout.totalPanels > 0) {
                 renderPanelsForPolygon(newPolygon.id, layout);
+                console.log('Paneles guardados en ref:', renderedPanelsRef.current.has(newPolygon.id));
             }
         }
 
@@ -428,90 +468,140 @@ export default function DesignMap({
         });
 
         // Listener para actualizar cuando se edite
+        // Listener para actualizar cuando se edite
+        let isUpdating = false; // Flag para evitar actualizaciones múltiples
+
+        const updatePolygonLayout = () => {
+            console.log('updatePolygonLayout llamada!');
+
+            // Usar las referencias para obtener valores actuales
+            const currentModule = selectedModuleRef.current;
+            const currentConfig = configRef.current;
+
+            console.log('Valores actuales:', {
+                isUpdating,
+                currentModule,
+                currentConfig,
+                hasModule: !!currentModule,
+                hasConfig: !!currentConfig
+            });
+
+            if (isUpdating || !currentModule || !currentConfig) {
+                console.log('SALIENDO PORQUE:', {
+                    isUpdating,
+                    noModule: !currentModule,
+                    noConfig: !currentConfig
+                });
+                return;
+            }
+            isUpdating = true;
+
+            console.log(`=== EDITANDO POLÍGONO ${newPolygon.id} ===`);
+
+            // 1. Primero limpiar TODOS los paneles existentes
+            const existingPanels = renderedPanelsRef.current.get(newPolygon.id);
+            if (existingPanels) {
+                console.log(`Limpiando ${existingPanels.length} paneles existentes`);
+                existingPanels.forEach(panel => {
+                    try {
+                        panel.setMap(null);
+                    } catch (e) {
+                        console.error('Error limpiando panel:', e);
+                    }
+                });
+            }
+
+            // 2. Calcular nueva área
+            const newArea = window.google.maps.geometry.spherical.computeArea(polygon.getPath());
+            const newCapacity = calculateCapacity(newArea);
+            console.log(`Nueva área: ${(newArea / 10000).toFixed(2)} ha`);
+
+            // 3. Obtener el path actualizado
+            const updatedPath = [];
+            polygon.getPath().forEach((point: any) => {
+                updatedPath.push(point);
+            });
+
+            // 4. Calcular nuevo layout con módulo y config ACTUALES
+            const layout = calculatePanelLayoutV3(
+                polygon,
+                updatedPath,
+                currentModule,    // <-- CAMBIO AQUÍ
+                currentConfig,    // <-- CAMBIO AQUÍ
+                window.google
+            );
+
+            console.log(`Nuevo layout: ${layout.totalPanels} paneles, ${layout.rows} filas`);
+
+            // 5. Crear nuevos paneles
+            const newPanels: any[] = [];
+            if (layout.totalPanels > 0 && layout.panels) {
+                layout.panels.forEach((panel: any, index: number) => {
+                    if (panel.corners && panel.corners.length === 4) {
+                        const rectangle = new window.google.maps.Polygon({
+                            paths: panel.corners,
+                            strokeColor: '#1e40af',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 0.5,
+                            fillColor: '#3b82f6',
+                            fillOpacity: 0.9,
+                            map: showPanels ? mapInstanceRef.current : null,
+                            clickable: false,
+                            zIndex: 1000 + index
+                        });
+                        newPanels.push(rectangle);
+                    }
+                });
+            }
+
+            // 6. Actualizar referencias y estado
+            renderedPanelsRef.current.set(newPolygon.id, newPanels);
+
+            // 7. Actualizar todos los estados necesarios
+            setPolygons(prevPolygons => {
+                return prevPolygons.map(p => {
+                    if (p.id === newPolygon.id) {
+                        return {
+                            ...p,
+                            area: newArea,
+                            capacity: newCapacity,
+                            path: updatedPath.map(pt => ({ lat: pt.lat(), lng: pt.lng() }))
+                        };
+                    }
+                    return p;
+                });
+            });
+
+            setPanelLayouts(prevLayouts => {
+                const newLayouts = new Map(prevLayouts);
+                newLayouts.set(newPolygon.id, layout);
+                return newLayouts;
+            });
+
+            setRenderedPanels(prevRendered => {
+                const newRendered = new Map(prevRendered);
+                newRendered.set(newPolygon.id, newPanels);
+                return newRendered;
+            });
+
+            console.log(`=== ACTUALIZACIÓN COMPLETA: ${newPanels.length} paneles renderizados ===`);
+
+            // Reset flag después de un delay
+            setTimeout(() => {
+                isUpdating = false;
+            }, 500);
+        };
+
+        // Agregar listeners con debounce
+        console.log('Agregando listeners al polígono', newPolygon.id); // <-- AGREGA ESTE
+
         ['set_at', 'insert_at', 'remove_at'].forEach(event => {
             polygon.getPath().addListener(event, () => {
-                console.log('Polígono editado - recalculando layout');
+                console.log(`Evento ${event} disparado en polígono ${newPolygon.id}`); // <-- AGREGA ESTE
 
-                // Actualizar área primero
-                const newArea = window.google.maps.geometry.spherical.computeArea(polygon.getPath());
-                const newCapacity = calculateCapacity(newArea);
-
-                // Actualizar el polígono en el estado manteniendo todas sus propiedades
-                setPolygons(prevPolygons => {
-                    return prevPolygons.map(p => {
-                        if (p.id === newPolygon.id) {
-                            return {
-                                ...p,
-                                area: newArea,
-                                capacity: newCapacity,
-                                path: []
-                            };
-                        }
-                        return p;
-                    });
-                });
-
-                // Recalcular layout cuando se edita el polígono
-                if (selectedModule && config && window.google) {
-                    setTimeout(() => {
-                        const updatedPath = [];
-                        polygon.getPath().forEach((point: any) => {
-                            updatedPath.push(point);
-                        });
-
-                        const layout = calculatePanelLayoutV3(
-                            polygon,
-                            updatedPath,
-                            selectedModule,
-                            config,
-                            window.google
-                        );
-
-                        console.log(`Nuevo layout calculado: ${layout.totalPanels} paneles`);
-
-                        // Actualizar layouts
-                        setPanelLayouts(prevLayouts => {
-                            const newLayouts = new Map(prevLayouts);
-                            newLayouts.set(newPolygon.id, layout);
-                            return newLayouts;
-                        });
-
-                        // Limpiar paneles anteriores
-                        // Limpiar TODOS los paneles anteriores de este polígono
-                        clearPanelsForPolygonId(newPolygon.id);
-
-
-                        // Re-renderizar si hay paneles
-                        if (layout.totalPanels > 0 && layout.panels) {
-                            const newPanels: any[] = [];
-
-                            layout.panels.forEach((panel: any, index: number) => {
-                                if (panel.corners && panel.corners.length === 4) {
-                                    const rectangle = new window.google.maps.Polygon({
-                                        paths: panel.corners,
-                                        strokeColor: '#1e40af',
-                                        strokeOpacity: 0.8,
-                                        strokeWeight: 0.5,
-                                        fillColor: '#3b82f6',
-                                        fillOpacity: 0.9,
-                                        map: showPanels ? mapInstanceRef.current : null,
-                                        clickable: false,
-                                        zIndex: 1000 + index
-                                    });
-                                    newPanels.push(rectangle);
-                                }
-                            });
-
-                            setRenderedPanels(prevRendered => {
-                                const newRendered = new Map(prevRendered);
-                                newRendered.set(newPolygon.id, newPanels);
-                                return newRendered;
-                            });
-
-                            console.log(`Renderizados ${newPanels.length} paneles después de edición`);
-                        }
-                    }, 100);
-                }
+                // Usar timeout para debounce
+                clearTimeout((window as any)[`polygonTimeout_${newPolygon.id}`]);
+                (window as any)[`polygonTimeout_${newPolygon.id}`] = setTimeout(updatePolygonLayout, 300);
             });
         });
 
@@ -677,10 +767,29 @@ export default function DesignMap({
                 onSegmentSelect?.(newPolygon);
             });
 
-            rectangle.addListener('bounds_changed', () => {
-                console.log('Rectángulo editado - recalculando layout');
+            // Listener para edición de rectángulo
+            let isUpdatingRect = false;
 
-                // Calcular nueva área
+            const updateRectangleLayout = () => {
+                if (isUpdatingRect || !selectedModule || !config) return;
+                isUpdatingRect = true;
+
+                console.log(`=== EDITANDO RECTÁNGULO ${newPolygon.id} ===`);
+
+                // 1. Limpiar paneles existentes
+                const existingPanels = renderedPanelsRef.current.get(newPolygon.id);
+                if (existingPanels) {
+                    console.log(`Limpiando ${existingPanels.length} paneles existentes`);
+                    existingPanels.forEach(panel => {
+                        try {
+                            panel.setMap(null);
+                        } catch (e) {
+                            console.error('Error limpiando panel:', e);
+                        }
+                    });
+                }
+
+                // 2. Calcular nueva área
                 const bounds = rectangle.getBounds();
                 const ne = bounds.getNorthEast();
                 const sw = bounds.getSouthWest();
@@ -688,8 +797,45 @@ export default function DesignMap({
                 const nw = new window.google.maps.LatLng(ne.lat(), sw.lng());
                 const newArea = window.google.maps.geometry.spherical.computeArea([ne, se, sw, nw]);
                 const newCapacity = calculateCapacity(newArea);
+                console.log(`Nueva área: ${(newArea / 10000).toFixed(2)} ha`);
 
-                // Actualizar el rectángulo en el estado manteniendo todas sus propiedades
+                // 3. Calcular nuevo layout
+                const path = [ne, se, sw, nw];
+                const layout = calculatePanelLayoutV3(
+                    rectangle,
+                    path,
+                    selectedModule,
+                    config,
+                    window.google
+                );
+
+                console.log(`Nuevo layout: ${layout.totalPanels} paneles, ${layout.rows} filas`);
+
+                // 4. Crear nuevos paneles
+                const newPanels: any[] = [];
+                if (layout.totalPanels > 0 && layout.panels) {
+                    layout.panels.forEach((panel: any, index: number) => {
+                        if (panel.corners && panel.corners.length === 4) {
+                            const panelRect = new window.google.maps.Polygon({
+                                paths: panel.corners,
+                                strokeColor: '#1e40af',
+                                strokeOpacity: 0.8,
+                                strokeWeight: 0.5,
+                                fillColor: '#3b82f6',
+                                fillOpacity: 0.9,
+                                map: showPanels ? mapInstanceRef.current : null,
+                                clickable: false,
+                                zIndex: 1000 + index
+                            });
+                            newPanels.push(panelRect);
+                        }
+                    });
+                }
+
+                // 5. Actualizar referencias y estado
+                renderedPanelsRef.current.set(newPolygon.id, newPanels);
+
+                // 6. Actualizar todos los estados
                 setPolygons(prevPolygons => {
                     return prevPolygons.map(p => {
                         if (p.id === newPolygon.id) {
@@ -704,64 +850,30 @@ export default function DesignMap({
                     });
                 });
 
-                // Recalcular layout cuando se edita el rectángulo
-                if (selectedModule && config && window.google) {
-                    setTimeout(() => {
-                        const path = [ne, se, sw, nw];
+                setPanelLayouts(prevLayouts => {
+                    const newLayouts = new Map(prevLayouts);
+                    newLayouts.set(newPolygon.id, layout);
+                    return newLayouts;
+                });
 
-                        const layout = calculatePanelLayoutV3(
-                            rectangle,
-                            path,
-                            selectedModule,
-                            config,
-                            window.google
-                        );
+                setRenderedPanels(prevRendered => {
+                    const newRendered = new Map(prevRendered);
+                    newRendered.set(newPolygon.id, newPanels);
+                    return newRendered;
+                });
 
-                        console.log(`Nuevo layout calculado: ${layout.totalPanels} paneles`);
+                console.log(`=== ACTUALIZACIÓN COMPLETA: ${newPanels.length} paneles renderizados ===`);
 
-                        // Actualizar layouts
-                        setPanelLayouts(prevLayouts => {
-                            const newLayouts = new Map(prevLayouts);
-                            newLayouts.set(newPolygon.id, layout);
-                            return newLayouts;
-                        });
+                // Reset flag
+                setTimeout(() => {
+                    isUpdatingRect = false;
+                }, 500);
+            };
 
-                        // Limpiar paneles anteriores
-                        // Limpiar TODOS los paneles anteriores de este rectángulo
-                        clearPanelsForPolygonId(newPolygon.id);
-
-
-                        // Re-renderizar si hay paneles
-                        if (layout.totalPanels > 0 && layout.panels) {
-                            const newPanels: any[] = [];
-
-                            layout.panels.forEach((panel: any, index: number) => {
-                                if (panel.corners && panel.corners.length === 4) {
-                                    const panelRect = new window.google.maps.Polygon({
-                                        paths: panel.corners,
-                                        strokeColor: '#1e40af',
-                                        strokeOpacity: 0.8,
-                                        strokeWeight: 0.5,
-                                        fillColor: '#3b82f6',
-                                        fillOpacity: 0.9,
-                                        map: showPanels ? mapInstanceRef.current : null,
-                                        clickable: false,
-                                        zIndex: 1000 + index
-                                    });
-                                    newPanels.push(panelRect);
-                                }
-                            });
-
-                            setRenderedPanels(prevRendered => {
-                                const newRendered = new Map(prevRendered);
-                                newRendered.set(newPolygon.id, newPanels);
-                                return newRendered;
-                            });
-
-                            console.log(`Renderizados ${newPanels.length} paneles después de edición`);
-                        }
-                    }, 100);
-                }
+            rectangle.addListener('bounds_changed', () => {
+                // Debounce
+                clearTimeout((window as any)[`rectangleTimeout_${newPolygon.id}`]);
+                (window as any)[`rectangleTimeout_${newPolygon.id}`] = setTimeout(updateRectangleLayout, 300);
             });
             rectangleStartRef.current = null;
             previewRectangleRef.current = null;
@@ -995,9 +1107,20 @@ export default function DesignMap({
             });
         }
 
-        renderedPanels.set(polygonId, panels);
-        renderedGuides.set(polygonId, guides);
-        console.log(`Rendered ${panels.length} panel rectangles`);
+        // Actualizar ref y estado
+        // Actualizar ref y estado - IMPORTANTE: actualizar ambos!
+        renderedPanelsRef.current.set(polygonId, panels);
+        setRenderedPanels(prev => {
+            const newRendered = new Map(prev);
+            newRendered.set(polygonId, panels);
+            return newRendered;
+        });
+        setRenderedGuides(prev => {
+            const newGuides = new Map(prev);
+            newGuides.set(polygonId, guides);
+            return newGuides;
+        });
+        console.log(`Rendered ${panels.length} panel rectangles - Ref actualizado: ${renderedPanelsRef.current.has(polygonId)}`);
     };
 
     // Limpiar paneles de un polígono

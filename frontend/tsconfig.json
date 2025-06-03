@@ -37,7 +37,8 @@
       "react",
       "react-dom",
       "node"
-    ]
+    ],
+    "target": "ES2017"
   },
   "include": [
     "next-env.d.ts",
