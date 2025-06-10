@@ -5,15 +5,21 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Save, ChevronLeft } from 'lucide-react';
+import { Save, ChevronLeft, Loader2 } from 'lucide-react';
 import DesignMap from '@/components/design/DesignMap';
 import ModuleConfigurator from '@/components/design/ModuleConfigurator';
 import DesignMetrics from '@/components/design/DesignMetrics';
+import { useProject } from '../../../../../../lib/hooks/useProjects';
+import { designsApi } from '../../../../../../lib/api/designs';
+import { toast } from 'sonner';
+import apiClient from '@/lib/api/client';
+
 
 export default function NewDesignPage() {
     const params = useParams();
     const router = useRouter();
-    const projectId = params.id as string;
+    const projectId = Number(params.id);
+    const { project, isLoading: projectLoading } = useProject(projectId);
 
     // Estados principales
     const [designName, setDesignName] = useState('Design 1');
@@ -42,15 +48,133 @@ export default function NewDesignPage() {
     });
 
     const handleSaveDesign = async () => {
-        // TODO: Implementar guardado
-        console.log('Saving design:', {
-            name: designName,
-            projectId,
-            polygons,
-            module: selectedModule,
-            config: designConfig,
-        });
+        // Validaciones
+        if (!selectedModule) {
+            toast.error('Por favor selecciona un módulo solar');
+            return;
+        }
+
+        if (polygons.length === 0) {
+            toast.error('Por favor dibuja al menos un área de instalación');
+            return;
+        }
+
+        if (!designName.trim()) {
+            toast.error('Por favor ingresa un nombre para el diseño');
+            return;
+        }
+
+        try {
+            toast.loading('Guardando diseño...');
+
+            // Calcular totales
+            const totalPanels = Array.from(panelLayouts.values())
+                .reduce((sum, layout) => sum + (layout.totalPanels || 0), 0);
+
+            const totalCapacityMW = Array.from(panelLayouts.values())
+                .reduce((sum, layout) => sum + (layout.actualCapacityKW || 0), 0) / 1000; // Convertir a MW
+
+            // Preparar installation_area con los polígonos y layouts
+            const installationArea = {
+                polygons: polygons.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    type: p.type,
+                    area: p.area,
+                    path: p.path || (p.type === 'polygon'
+                        ? p.polygon.getPath().getArray().map((point: any) => ({
+                            lat: point.lat(),
+                            lng: point.lng()
+                        }))
+                        : null),
+                    bounds: p.type === 'rectangle' && p.bounds ? {
+                        north: p.bounds.getNorthEast().lat(),
+                        east: p.bounds.getNorthEast().lng(),
+                        south: p.bounds.getSouthWest().lat(),
+                        west: p.bounds.getSouthWest().lng()
+                    } : null
+                })),
+                panelLayouts: Object.fromEntries(panelLayouts),
+                totalPanels: totalPanels,
+                totalCapacityKW: totalCapacityMW * 1000,
+                config: {
+                    ...designConfig,
+                    moduleInfo: {
+                        id: selectedModule.id,
+                        manufacturer: selectedModule.manufacturer,
+                        model: selectedModule.model,
+                        power: selectedModule.power,
+                        width: selectedModule.width,
+                        height: selectedModule.height
+                    }
+                }
+            };
+
+            const designData = {
+                name: designName,
+                project_id: projectId, // IMPORTANTE: Agregar project_id
+                capacity_mw: totalCapacityMW || 1.0, // En MW
+                panel_type_id: selectedModule.id,
+                inverter_type_id: 1, // Por ahora hardcoded
+                tilt_angle: parseFloat(designConfig.tilt) || 25,
+                azimuth_angle: parseFloat(designConfig.azimuth) || 180,
+                row_spacing: parseFloat(designConfig.rowSpacing) || 2,
+                module_orientation: designConfig.orientation.toLowerCase(), // IMPORTANTE: en minúsculas
+                modules_per_string: 20, // Valor por defecto
+                strings_per_inverter: 10, // Valor por defecto
+                total_inverters: Math.ceil(totalCapacityMW / 2.5) || 1, // Asumiendo inversores de 2.5MW
+                installation_area: installationArea
+            };
+
+            console.log('Guardando diseño:', JSON.stringify(designData, null, 2));
+
+            // Guardar en el backend
+            const response = await apiClient.post(
+                `/api/v1/solar/projects/${projectId}/designs`,
+                designData
+            );
+
+            console.log('Diseño guardado:', response.data);
+
+            toast.dismiss();
+            toast.success('¡Diseño guardado exitosamente!');
+
+            // Redirigir a la página del proyecto
+            setTimeout(() => {
+                router.push(`/projects/${projectId}`);
+            }, 1000);
+
+        } catch (error: any) {
+            console.error('Error guardando diseño:', error);
+            console.error('Respuesta del servidor:', error.response?.data);
+            toast.dismiss();
+
+            // Mostrar error específico si existe
+            const errorDetail = error.response?.data?.detail;
+            if (typeof errorDetail === 'string') {
+                toast.error(errorDetail);
+            } else if (Array.isArray(errorDetail)) {
+                // Si es un array de errores de validación
+                const errorMsg = errorDetail.map(e => e.msg).join(', ');
+                toast.error(errorMsg);
+            } else {
+                toast.error('Error al guardar el diseño');
+            }
+        }
     };
+
+
+    const projectCoordinates = project?.latitude && project?.longitude
+        ? { lat: project.latitude, lng: project.longitude }
+        : null;
+
+    if (projectLoading) {
+        return (
+            <div className= "h-screen flex items-center justify-center" >
+            <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+                </div>
+    );
+    }
 
     const handleSegmentSelect = (segment: any) => {
         setSelectedSegment(segment);
@@ -102,6 +226,8 @@ config = { designConfig }
 onSegmentSelect = { handleSegmentSelect }
 panelLayouts = { panelLayouts }
 setPanelLayouts = { setPanelLayouts }
+projectCoordinates = { projectCoordinates }
+projectName = { project?.name }
     />
     </div>
 

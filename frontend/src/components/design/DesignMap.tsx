@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, MapPin, Square, Pentagon, MousePointer, Map as MapIcon, Globe, Eye, EyeOff } from 'lucide-react';
+import { Trash2, MapPin, Square, Pentagon, MousePointer, Map as MapIcon, Globe, Eye, EyeOff, Home } from 'lucide-react';
 import { calculatePanelLayoutV3 } from '@/utils/panelLayoutV3';
 interface DesignMapProps {
     polygons: any[];
@@ -15,6 +15,9 @@ interface DesignMapProps {
     onSegmentSelect?: (segment: any) => void;
     panelLayouts?: Map<number, any>;
     setPanelLayouts?: (layouts: Map<number, any>) => void;
+    projectCoordinates?: { lat: number; lng: number } | null;
+    projectName?: string;
+    existingPolygons?: any[];
 }
 
 export default function DesignMap({
@@ -24,7 +27,9 @@ export default function DesignMap({
     config,
     onSegmentSelect,
     panelLayouts: propPanelLayouts,
-    setPanelLayouts: propSetPanelLayouts
+    setPanelLayouts: propSetPanelLayouts,
+    projectCoordinates,
+    projectName
 }: DesignMapProps) {
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<any>(null);
@@ -221,8 +226,16 @@ export default function DesignMap({
     }, [showGuides]);
 
     // Inicializar mapa
+    // Inicializar mapa
     useEffect(() => {
-        if (!window.google) {
+        // Verificar si ya existe un script de Google Maps
+        const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+
+        if (window.google && window.google.maps) {
+            // Si Google Maps ya está completamente cargado
+            initMap();
+        } else if (!existingScript) {
+            // Si no hay script, crearlo
             const script = document.createElement('script');
             script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=drawing,geometry`;
             script.async = true;
@@ -230,16 +243,34 @@ export default function DesignMap({
             script.onload = initMap;
             document.head.appendChild(script);
         } else {
-            initMap();
+            // Si el script existe pero Google Maps aún no está listo
+            const checkGoogle = setInterval(() => {
+                if (window.google && window.google.maps) {
+                    clearInterval(checkGoogle);
+                    initMap();
+                }
+            }, 100);
+
+            // Limpiar el interval después de 10 segundos por seguridad
+            setTimeout(() => clearInterval(checkGoogle), 10000);
         }
+
+        // Cleanup
+        return () => {
+            if (mapInstanceRef.current) {
+                // No eliminar el mapa aquí para evitar problemas
+            }
+        };
     }, []);
 
     const initMap = () => {
         if (!mapRef.current || mapInstanceRef.current) return;
 
+
+
         const map = new window.google.maps.Map(mapRef.current, {
-            center: { lat: -34.6037, lng: -58.3816 },
-            zoom: 18,
+            center: projectCoordinates || { lat: -34.6037, lng: -58.3816 },
+            zoom: projectCoordinates ? 19 : 18,
             mapTypeId: 'satellite',
             tilt: 0,
             disableDefaultUI: false,
@@ -268,6 +299,44 @@ export default function DesignMap({
         mapInstanceRef.current = map;
         setIsMapReady(true);
         console.log('Mapa inicializado');
+        console.log('Mapa inicializado en:', projectCoordinates || 'Buenos Aires (default)');
+
+        // Si tenemos coordenadas del proyecto, agregar un marcador
+        if (projectCoordinates && projectName) {
+            const projectMarker = new window.google.maps.Marker({
+                position: projectCoordinates,
+                map: map,
+                title: projectName,
+                icon: {
+                    path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                    scale: 8,
+                    fillColor: '#ef4444',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                    anchor: new window.google.maps.Point(0, 8),
+                },
+            });
+
+            // Agregar InfoWindow al marcador
+            const projectInfoWindow = new window.google.maps.InfoWindow({
+                content: `<div style="padding: 8px;">
+            <strong>${projectName}</strong><br/>
+            <span style="color: #666;">Ubicación del proyecto</span><br/>
+            <span style="font-size: 12px;">${projectCoordinates.lat.toFixed(6)}, ${projectCoordinates.lng.toFixed(6)}</span>
+        </div>`
+            });
+
+            projectMarker.addListener('click', () => {
+                projectInfoWindow.open(map, projectMarker);
+            });
+
+            // Mostrar InfoWindow inicialmente por 3 segundos
+            projectInfoWindow.open(map, projectMarker);
+            setTimeout(() => {
+                projectInfoWindow.close();
+            }, 3000);
+        }
     };
 
     const handleMapClick = (latLng: any) => {
@@ -1244,6 +1313,30 @@ Guías
     </Button>
               )}
 </div>
+
+{/* Botón para centrar en proyecto */ }
+{
+    projectCoordinates && (
+        <>
+        <div className="h-6 w-px bg-gray-300" />
+            <Button
+            variant="outline"
+    size = "sm"
+    onClick = {() => {
+        if (mapInstanceRef.current && projectCoordinates) {
+            mapInstanceRef.current.setCenter(projectCoordinates);
+            mapInstanceRef.current.setZoom(19);
+        }
+    }
+}
+className = "flex items-center gap-2"
+    >
+    <Home className="w-4 h-4" />
+        Centrar en proyecto
+            </Button>
+            </>
+)}
+
 
 {
     drawingMode && (
